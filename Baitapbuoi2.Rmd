@@ -1,0 +1,658 @@
+---
+title: "Tối ưu và giải hệ phương trình phi tuyến"
+author: "Nguyễn Trọng Nhân"
+date: '2024-12-30'
+output:
+    rmdformats::readthedown:
+    theme: readthedown
+    highlight: github
+---
+```{r setup, include = FALSE}
+library(ggplot2)
+library(dplyr)
+knitr::opts_chunk$set(fig.width = 5, fig.asp = 1/3)
+library(numDeriv)
+```
+<style>
+.red-text {
+  color: red;
+}
+</style>
+# Optimization 1 chiều với R
+
+## Bài tập trên lớp 
+
+***Tìm cực trị của hàm số $f\left(x\right)=\dfrac{ln(x)}{1+x}$.***
+
+### Phương pháp Bisection
+***Thuật thoán Bisection:***  
+*Bước 1:* Bắt đầu với khoảng $[a_0;b_0]$ sao cho $f'(a_0)f'(b_0)\le 0$, xác định:$$x_0=\dfrac{a+b}{2}$$  
+*Bước 2:* Cập nhật khoảng nghiệm $[a_1;b_1]$ bởi:
+$$\left[ a_{1};b_{1} \right]= \begin{cases}[a_{0};x_{0}]&f^{\prime}(a_{0})f^{\prime}(x_{0})\leqslant 0,\\ [x_{0};b_{0}]&f^{\prime}(a_{0})f^{\prime}(x_{0})>0\end{cases}$$
+và cập nhật $x_1=\dfrac{a_1+b_1}{2}$  
+*Bước 3:* Lập lại **bước 2** trong $M$ lần, khi đó với $t=1,...,M$  
+$$\left[ a_{t+1};b_{t+1} \right]= \begin{cases}[a_{t};x_{t}]&f^{\prime}(a_{t})f^{\prime}(x_{t})\leqslant 0,\\ [x_{t};b_{t}]&f^{\prime}(a_{t})f^{\prime}(x_{t})>0\end{cases}$$
+và $$x_{t+1}=\dfrac{a_t+b_t}{2}.$$
+***Code R:***  
+Định nghĩa hàm $f(x)=\dfrac{ln(x)}{1+x}$ trong R:
+
+```{r}
+fx <- function(x){
+  (log(x)) / (1+x)
+}
+```
+Vẽ đồ thị hàm số $f(x)$:  
+```{r}
+x <- seq( 1 , 8, by = 0.1)
+y <- fx(x)
+# Vẽ đồ thị
+ggplot(data.frame(x, y), aes(x = x, y = y)) +
+  geom_line() +
+  labs(x = "x", y = "f'(x)", title = "Đồ thị hàm số f(x) = ln(x) / (1 + x)") +
+  theme_classic()
+```
+
+Đạo hàm cấp 1 của hàm số $f(x)$ là:
+$$f'(x)=\dfrac{1+1/x-ln(x)}{(1+x)^2}$$
+Định nghĩa đạo hàm cấp 1 trong R
+```{r}
+derivative1_f <- function(x){
+  res <- (1 + (1/x) -(log(x)))/((1+x)^2)
+  return(res)
+}
+```
+Vẽ đồ thị $f'(x)$:
+```{r}
+x <- seq( 1 , 8, by = 0.1)
+y1 <- derivative1_f(x)
+# Vẽ đồ thị
+ggplot(data.frame(x, y), aes(x = x, y = y1)) +
+  geom_line() + geom_hline(yintercept = 0, color = "red") +
+  labs(x = "x", y = "f(x)", title = "Đồ thị hàm số f'(x)") +
+  theme_classic()
+```
+
+
+Kiểm tra $f'(1)\times f'(6)\le 0$:
+
+```{r}
+derivative1_f(1) * derivative1_f(6)
+```
+
+Gán $a_0=1$ và $b_0=6$, sử dụng thuật toán Bisection chạy vòng lặp với $M=40$:
+```{r}
+a0 <- 1
+b0 <- 6
+
+x0 <- (a0+b0)/2
+
+#vong lap
+iter <- 40
+for(i in 1:40){
+  cond <- derivative1_f(a0) * derivative1_f(x0)
+  if (cond > 0) {
+    a0 <- x0
+  } else {
+    b0 <- x0
+  }
+  x0 <- (a0 + b0)/2
+  print(x0)
+}
+```
+
+Trong thực tế, ta không thể lặp với số $M$ lớn. Ta cần tiêu chuẩn để dừng thuật toán.  
+***Tiêu chuẩn hội tụ tuyệt đối***:
+$$t>log_2\left(\dfrac{b_0-a_0}{\delta}\right)-1$$
+Ví dụ sai số $10^{-6}$ thì ta cần lặp:
+```{r}
+t <- log2((6-1)/(10)^(-6))-1
+print(t)
+```
+***Cần lặp 22 lần.***  
+***Tiêu chuẩn hội tụ tương đối***: *lí thuyết trong đề cương*
+
+### Phương pháp Newton
+***Thuật toán Newton***  
+*Điều kiện:*  
+
+* $f''(x) \ne 0$ trên $[a;b]$.  
+
+
+* $f''(x)$ không đổi dấu trên $[a,b]$.  
+
+
+* $f'(a)f'(b)<0$.  
+
+
+* $|\dfrac{f'(a)}{f''(a)}|<b-a$ và $|\dfrac{f'(b)}{f''(b)}|<b-a$  
+
+
+  
+Khi đó với mọi $x \in [a;b]$ thì $x$ sẽ hội tụ về cực trị của hàm số $f$ trên đoạn $[a;b]$.  
+
+Ta có công thức lặp nghiệm:
+$$x_{t+1}=x_t-\dfrac{f'(x_t)}{f''(x_t)}$$
+
+***Code R:***  
+
+Đạo hàm cấp hai của hàm $f$ là:
+$$f''=-\dfrac{3+1/x^2+4/x-2ln(x)}{(1+x)^3}$$
+Định nghĩa đạo hàm cấp 2 của hàm $f$ trong R:
+```{r}
+derivative2_f <- function(x){
+  res <- (-(3+(1/(x^2))+4/x-2*log(x))/((1+x)^3))
+  return(res)
+}
+```
+Vẽ đồ thị $f'(x)$:
+```{r}
+x <- seq( 2 , 5, by = 0.1)
+y2 <- derivative1_f(x)
+# Vẽ đồ thị
+ggplot(data.frame(x, y2), aes(x = x, y = y2)) +
+  geom_line() + geom_hline(yintercept = 0, color = "red") +
+  labs(x = "x", y = "f'(x)", title = "Đồ thị hàm số f'(x)") +
+  theme_classic()
+```
+
+Vẽ đồ thị $f''(x)$:
+```{r}
+x <- seq( 2 , 5, by = 0.1)
+y3 <- derivative2_f(x)
+# Vẽ đồ thị
+ggplot(data.frame(x, y3), aes(x = x, y = y3)) +
+  geom_line() + geom_hline(yintercept = 0, color = "red") +
+  labs(x = "x", y = "f''(x)", title = "Đồ thị hàm số f''(x)") +
+  theme_classic()
+```
+
+
+Đặt $h(x)=\dfrac{f'(x)}{f''(x)}$. Định nghĩa hàm $h(x)$ trên R.
+```{r}
+hx <- function(x){
+  res <- derivative1_f(x) / derivative2_f(x)
+  return(res)
+}
+```
+Ta dễ dàng kiểm tra được đoạn $[2;4]$ thoả các điều kiện để sử dụng ***phương pháp Newton*** 
+Chọn $x_0 = 3 \in [2;4]$.  
+
+Ta có công thức lặp nghiệm:
+$$x_{t+1}=x_t-\dfrac{f'(x_t)}{f''(x_t)}$$  
+
+Chạy vòng lặp tìm cực trị:
+```{r}
+cauchy <- 3
+#vong lap
+for(i in 1:7){
+  cauchy <- cauchy - hx(cauchy)
+  print(cauchy, digits = 10)
+}
+```
+
+### Phương pháp Fisher Scoring  
+
+Phương pháp **Fisher Scoring** là một biến thể của phương pháp **Newton** (xem trong file bài giảng)
+
+### Phương pháp Secant  
+
+Sử dụng công thức lặp nghiệm của phương pháp **Newton**, tuy nhiên đối với các công thức khó xác định đạo hàm cấp 2 một cách tường minh.  
+
+Ta thay $f''(x)$ của công thức $Newton$ thành:
+$$f''(x_t)\sim \dfrac{f'(x_t)-f'(x_{t-1})}{x_t-x_{t-1}}$$
+
+Khi đó công thức lặp nghiệm trở thành:
+$$x_{t+1}=x_t-f'(x_t)\times \dfrac{x_t-x_{t-1}}{f'(x_t)-f'(x_{t-1})}$$
+
+
+***Nhược điểm:***  
+
+1. Cần xác định hai điểm bắt đầu $x_0,x_1$.  
+
+2. Bậc hội tụ gần bằng $1.62$ (chậm hơn phương pháp Newton)  
+
+**Code R:**
+
+Dựa vào phần phương pháp Newton, chọn $x_0=3,x_1=4$:  
+
+```{r}
+#Lap ham uoc luong cho dao ham cap 2 theo phuong phap Secant
+secant <- function(x,y){
+  res <- (derivative1_f(y)-derivative1_f(x))/(y-x)
+  return(res)
+}
+#Chon 2 diem bat dau x_0 va x_1:
+se0 <- 3
+se1 <- 4
+#Chay vong lap nghiem:
+for(i in 1:20){
+  se1 <- se1 - derivative1_f(se1)*(1/secant(se1,se0))
+  print(se1)
+}
+
+```
+### Phương pháp điểm bất động - Fixed point  
+
+**Điều kiện sử dụng:**  
+
+Hàm cần xét là một ánh xạ co ($f \in [a;b] \text{ nếu } x \in [a,b]$ và thoả điều kiện Lipschitz)  
+
+$\Rightarrow$ tồn tại một điểm bất động $x_\theta$ trên đoạn $[a;b]$.  
+
+Nếu $f''(x)$ bị chặn và không đổi dấu trên đoạn $[a;b]$, ta đặt:  
+
+$$g(x)=\alpha f'(x)+x$$  
+
+Với hệ số $\alpha$ được chọn sao cho $|\alpha f''(x)+x|<1$ trên khoảng chứa điểm $x_0$.  
+
+Công thức lặp nghiệm:
+
+$$x_{t+1}=x_t+\alpha \times f'(x_t).$$
+Sử dụng vào bài toán trên:  
+
+Tìm hệ số $\alpha$ thoả $\left|\alpha f''(x) + x\right| < 1$ trên đoạn $[3;4]$:
+
+$$\left|\alpha f''(x) + x\right| < 1 \Leftrightarrow 0 < \alpha < \dfrac{2.(1+x)^3}{3+1/x^2+4/x-2ln(x)}=g(x), x \in [3;4] $$
+
+Vẽ đồ thị trên của $g(x)$ trên đoạn $[3;4]$  
+
+```{r}
+x <- seq( 3 , 4, by = 0.01)
+y3 <- (-2)/(derivative2_f(x)) # -2/f'' la f'' la so am (tu cm trong TH nay)
+# Vẽ đồ thị
+ggplot(data.frame(x, y3), aes(x = x, y = y3)) +
+  geom_line() +
+  labs(x = "x", y = "g(x)", title = "Đồ thị hàm số g(x)") +
+  theme_classic()
+```
+
+
+Dựa vào hình dáng đồ thị thì min $g(x)$ trên đoạn $[3;4]$ là $g(3)$  
+
+```{r}
+(-2)/(derivative2_f(3))
+```
+
+Vậy hệ số $\alpha$ cần chọn chỉ cần thoả $0 < \alpha < g(3)$:
+
+***Code R:***  
+
+Chọn $\alpha = 55$:
+```{r}
+# Chon x_0 = 3 va alpha =55
+fixp0 <- 3
+alpha <- 55
+# Chay vong lap tim nghiem
+for(i in 1:10){
+  fixp0 <- fixp0 + alpha * derivative1_f(fixp0)
+  print(fixp0)
+}
+```
+Chọn $\alpha = 4$:
+
+```{r}
+# Chon x_0 = 3 va alpha =4
+fixp1 <- 3
+alpha1 <- 4
+# Chay vong lap tim nghiem
+for(i in 1:40){
+  fixp1 <- fixp1 + alpha1 * derivative1_f(fixp1)
+  print(fixp1)
+}
+```
+Nhược điểm là phụ thuộc vào hệ số $\alpha$ nếu chọn hệ số $\alpha$ không tốt có thể chạy rất nhiêù vòng lặp.  
+
+## Bài tập về nhà 1 
+
+***The following data are an i.i.d sample from a Cauchy($\theta,1$) distribution: $1.77,-0.23, 2.76, 3.80, 3.47, 56.75, -1.34, 4.24, -2.44, 3.29, 3.71, -2.40, 4.53, -0.07, -1.05, -13.87, -2.53, -1.75, 0.27, 43.21$***
+ 
+
+### ***Vẽ đồ thị hàm log - likelihood***
+
+Nhập data vào $R$:
+
+```{r}
+data <- c(1.77, -0.23, 2.76, 3.80, 3.47, 56.75, -1.34, 4.24, -2.44, 3.29, 
+          3.71, -2.40, 4.53, -0.07, -1.05, -13.87, -2.53, -1.75, 0.27, 43.21)
+```
+
+***Hàm log - likelihood*** cho phân phối Cauchy $\left(\theta, 1\right)$ là:
+
+$$
+l\left(\theta\right) = \sum_{i=1}^n \log\left(\dfrac{1}{\pi\left(1+\left(x_i-\theta\right)^2\right)}\right)
+= -n\log(\pi) - \sum_{i=1}^n \log\left(1+\left(x_i-\theta\right)^2\right)
+$$
+
+
+Định nghĩa hàm log - likelihood cho phân phối Cauchy trong $R$:
+
+```{r}
+log_likelihoodcauchy <- function(data, theta){
+  n <- length(data)
+  res <- -n * log(pi) - sum(log(1+(data - theta)^2))
+  return(res)
+}
+```
+
+
+***Chú ý:***
+
+data (là vector các giá trị số) và đối tượng theta (là một số đơn). Khi bạn thực hiện phép toán data - theta có thể bị sai. (nên sử dụng sapply)
+
+```{r}
+value_theta <- seq(-20, 60, by= 0.1)
+log_like <- sapply(value_theta, log_likelihoodcauchy, data = data) 
+#Có thể dùng for: for(i in 1:length(data)){log_like <- -n * log(pi) - sum(log(1+(data[i]-value_theta)^2)}
+# Vẽ đồ thị
+par(mfrow=c(1,1))
+ggplot(data.frame(value_theta, log_like), aes(x = value_theta, y = log_like)) +
+  geom_line() +
+  labs(x = "theta", y = "l(theta)") +
+  theme_classic()
+```
+
+
+### ***Áp dụng thuật toán Newton-Raphson để ước lượng hợp lý cực đại cho $\theta$, với mỗi điểm bắt đầu sau: $-11, -1, 0, 1.5, 4, 4.7, 7, 8$, and 38. Hãy nhận xét kết quả thu được (hội tụ, ổn định). Giá trị trung bình của dữ liệu có phải là điểm khởi đầu tốt không? *** 
+
+<span class="red-text">Sử dụng phương pháp Newton - Raphson để tính MLE</span>.
+
+***MLE (Maximum Likelihood Estimation)*** hay Ước lượng hợp lý cực đại là một phương pháp thống kê được sử dụng để ước lượng giá trị của các tham số trong một mô hình dựa trên dữ liệu quan sát. Mục tiêu chính của MLE là tìm giá trị của các tham số sao cho xác suất xảy ra của dữ liệu quan sát (gọi là likelihood) là lớn nhất.
+
+Công thức lặp của phương pháp Newton:
+$$\theta _{t+1}= \theta_t - \dfrac{l'(\theta)}{l''(\theta)} $$
+Tính  $l'(\theta)$:
+
+$$l'(\theta)=\dfrac{\partial l}{\partial \theta}=2 \sum_{i=1}^{n}\frac{x_i-\theta}{1+\left(x_i-\theta\right)^2}$$
+Định nghĩa hàm $l'(\theta)$:
+
+```{r}
+derivative1_l <- function(data,theta){
+  n <- length(data)
+  res <- 2 * (sum((data - theta )/(1 + (data - theta)^2)))
+  return(res)
+}
+```
+
+Tính $l''(\theta)$:
+
+$$l''(\theta)= \sum_{i=1}^n \dfrac{-2 -6\left(x_i - \theta\right)^2}{\left(1+\left(x_i - \theta \right)^2\right)^2}$$
+Định nghĩa hàm $l''(\theta)$:
+
+```{r}
+derivative2_l <- function(data, theta){
+  n <- length(data)
+  res <- sum((-2 - 6 * (data - theta)^2) / ((1 + (data - theta)^2)^2))
+  return(res)
+}
+```
+
+Vòng lặp của Newton - Raphson:
+
+```{r}
+newton_r <- function(data, theta_start, tol = 1e-6, max_iter = 100) {
+  theta_value <- numeric(max_iter) # Tạo vector để lưu giá trị theta
+  theta <- theta_start
+  
+  for (i in 1:max_iter) {
+    theta_new <- theta - (derivative1_l(data, theta)) / (derivative2_l(data, theta))
+    theta_value[i] <- theta_new # Lưu giá trị mới của theta
+    
+    # Kiểm tra điều kiện dừng
+    if (i > 1 && abs(theta_new - theta) < tol) {
+      #cat("Hội tụ tại vòng lặp", i, "với giá trị theta =", theta_new, "\n")
+      return(theta_value[1:i]) # Trả về các giá trị theta đã lưu đến khi hội tụ
+    }
+    
+    # Cập nhật theta cho lần lặp tiếp theo
+    theta <- theta_new
+  }
+  
+  cat("Không hội tụ sau", max_iter, "vòng lặp.\n")
+  return(theta_value)
+}
+
+```
+
+Điểm bắt đầu:
+
+```{r}
+startpoint <- c(-11, 1, 0, 1.5, 4, 4.7, 7, 8, 38)
+```
+
+```{r}
+# Định nghĩa số vòng lặp tối đa
+max_iter <- 100
+
+# Tạo bảng để lưu kết quả
+results_df <- data.frame(matrix(nrow = max_iter, ncol = length(startpoint)))
+colnames(results_df) <- paste("Start:", startpoint)
+
+# Tính Newton-Raphson cho từng điểm khởi đầu và lưu vào bảng
+for (i in seq_along(startpoint)) {
+  result <- newton_r(data, startpoint[i], tol = 1e-6, max_iter = max_iter)
+  results_df[1:length(result), i] <- result # Lưu các giá trị tính được
+}
+
+# In bảng kết quả
+print(results_df)
+
+# In hàng cuối cùng của kết quả hợp lệ (bỏ qua NA)
+last_iteration <- apply(results_df, 2, function(col) tail(col[!is.na(col)], 1))
+print(last_iteration)
+
+```
+***Từ bảng kết quả cho thấy các điểm startpoint khác nhau sẽ cho ra kết quả khác nhau.***
+
+Tính thử hàm trên với điểm bắt đầu là Mean của dữ liệu:
+
+```{r}
+mean_data <- mean(data)
+# Gọi hàm newton_r
+theta_result1 <- newton_r(data, mean_data, tol= 1e-6, 100)
+# In ra giá trị của theta tại vòng lặp thứ 100
+print(theta_result1)
+```
+
+### ***Áp dụng phương pháp bisection với điểm bắt đầu là [-1;1]. Sử dụng các lần chạy bổ sung để minh hoạ cách thức mà phương pháp Bisection có thể tìm được giá trị cực đại toàn cục*** 
+
+Code R:
+
+Kiểm tra $l'(-1) \times l'(1)$:
+
+```{r}
+derivative1_l(data,-1) * derivative1_l(data, 1)
+```
+
+Ở đây ta sử dụng công thức lặp nghiệm $a_{t+1}= \dfrac{a_t+b_t}{2}$:
+
+$$a_{t+1}=a_t+\dfrac{b_t-a_t}{2}$$
+
+```{r}
+bisec0 <- -1
+bisec1 <- 1
+bisec <- (bisec1 + bisec0)/2
+tolerance <- 1e-6  #Điều kiện sai số _ dừng thuật toán
+
+#vong lap
+iter <- 100
+for(i in 1:iter){
+  
+  #Giá trị điều kiện
+  cond1 <- derivative1_l(data,bisec0) * derivative1_l(data,bisec)
+  
+  if (cond1 > 0) {
+    bisec0 <- bisec
+  } else {
+    bisec1 <- bisec
+  }
+  
+  bisec <- (bisec1 + bisec0)/2
+  
+  cat("Lần lặp", i, ": x = ", format(bisec, nsmall = 6), "\n")
+  
+  #Điệu kiện dừng
+  if (abs(bisec1 - bisec0) < tolerance){cat("Thuật toán dừng lại tại lần lặp thứ", i , "với nghiệm x =", format(bisec, nsmall = 6),"\n") 
+  break}
+  
+}
+```
+
+
+### ***Từ các giá trị khởi đầu của $\left(\theta^{(0)},\theta^{(1)}\right)=(-2,1)$, áp dụng phương pháp Secant để tìm ước lượng hợp lý cực đại cho $\theta$. Điều này xảy ra khi $\left(\theta^{(0)},\theta^{(1)}\right)=(-3,3)$, và đối với các lựa chọn khởi đầu khác***
+
+Sử dụng công thức lặp nghiệm của ***phương pháp Secant***:
+$$x_{t+1}=x_t-f'(x_t)\times \dfrac{x_t-x_{t-1}}{f'(x_t)-f'(x_{t-1})}$$
+Code R:
+
+***Trường hợp 1: $\left(\theta^{(0)},\theta^{(1)}\right)=(-2,1)$***
+```{r}
+theta0 <- -2
+theta1 <- 1
+
+tolerance <- 1e-6  #Điều kiện sai số _ dừng thuật toán
+
+#vong lap
+iter <- 100
+for(i in 1:iter){
+  
+  theta_prev <- theta1 #Lưu theta1 vào biến theta_prev để kiểm tra điều kiện dừng thuật toán
+  
+  theta1 <- theta1 - derivative1_l(data, theta1) * ((theta1 - theta0) / (derivative1_l(data, theta1) - derivative1_l(data, theta0)))
+  
+  cat("Lần lặp", i, ": x = ", format(theta1, nsmall = 6), "\n")
+  
+  #Điệu kiện dừng
+  if (abs(theta1 - theta_prev) < tolerance){cat("Thuật toán dừng lại tại lần lặp thứ", i , "với nghiệm x =", format(theta1, nsmall = 6),"\n") 
+  break}
+  
+}
+```
+
+
+***Trường hợp 2: $\left(\theta^{(0)},\theta^{(1)}\right)=(-3,3)$***
+```{r}
+theta2 <- -3
+theta3 <- 3
+
+tolerance <- 1e-6  #Điều kiện sai số _ dừng thuật toán
+
+#vong lap
+iter <- 100
+for(i in 1:iter){
+  
+  theta_prev <- theta3 #Lưu theta1 vào biến theta_prev để kiểm tra điều kiện dừng thuật toán
+  
+  theta3 <- theta3 - derivative1_l(data, theta3) * ((theta3 - theta2) / (derivative1_l(data, theta3) - derivative1_l(data, theta2)))
+  
+  cat("Lần lặp", i, ": x = ", format(theta3, nsmall = 6), "\n")
+  
+  #Điệu kiện dừng
+  if (abs(theta3 - theta_prev) < tolerance){cat("Thuật toán dừng lại tại lần lặp thứ", i , "với nghiệm x =", format(theta3, nsmall = 6),"\n") 
+  break}
+  
+}
+```
+
+
+### Sử dụng ví dụ này để so sánh tốc độ và tính ổn định của phương pháp Newton-Raphson, bisection, fixed-point và phương pháp secant. Kết luân của bạn có thay đổi khi bạn áp dụng các phương pháp này cho một ngẫu nhiên có kích thước 20 từ phân phối chuẩn $\left(\theta,1\right)$ không?
+
+Code R cho phương pháp Fixed-point với hệ số $x_0=3, \alpha =4$:
+
+```{r}
+# Chon x_0 = 3 va alpha =4
+fixp1 <- 3
+alpha1 <- 4
+tolerance <- 1e-6
+# Chay vong lap tim nghiem
+iter <- 40
+for(i in 1:iter){
+  fixp1_prev <- fixp1
+  fixp1 <- fixp1 + alpha1 * derivative1_l(data,fixp1)
+  cat("Lần lặp", i, ": x = ", format(fixp1, nsmall = 6), "\n")
+  
+  #Điệu kiện dừng
+  if (abs(fixp1 - fixp1_prev) < tolerance){cat("Thuật toán dừng lại tại lần lặp thứ", i , "với nghiệm x =", format(fixp1, nsmall = 6),"\n") 
+  break}
+}
+```
+
+$\Rightarrow$ Phương pháp Fixed-point không hiệu quả trong trường hợp này:
+
+- Việc xác định hệ số $\alpha$ đối với các hàm phức tạp khá khó khăn.
+
+So sánh tốc độ của các phương pháp còn lại:
+
+```{r}
+# Newton-Raphson
+start_time_newton <- Sys.time()
+newton_result <- newton_r(data, startpoint[1], tol = 1e-6, max_iter = 100)
+end_time_newton <- Sys.time()
+time_taken_newton <- end_time_newton - start_time_newton
+
+# Bisection
+start_time_bisec <- Sys.time()
+bisec0 <- -1
+bisec1 <- 1
+bisec <- (bisec1 + bisec0) / 2
+tolerance <- 1e-6
+iter <- 100
+for(i in 1:iter){
+  cond1 <- derivative1_l(data, bisec0) * derivative1_l(data, bisec)
+  if (cond1 > 0) {
+    bisec0 <- bisec
+  } else {
+    bisec1 <- bisec
+  }
+  bisec <- (bisec1 + bisec0) / 2
+  if (abs(bisec1 - bisec0) < tolerance) {
+    break
+  }
+}
+end_time_bisec <- Sys.time()
+time_taken_bisec <- end_time_bisec - start_time_bisec
+
+# Secant
+start_time_secant <- Sys.time()
+theta0 <- -2
+theta1 <- 1
+iter <- 100
+for(i in 1:iter){
+  theta_prev <- theta1
+  theta1 <- theta1 - derivative1_l(data, theta1) * ((theta1 - theta0) / (derivative1_l(data, theta1) - derivative1_l(data, theta0)))
+  if (abs(theta1 - theta_prev) < tolerance) {
+    break
+  }
+}
+end_time_secant <- Sys.time()
+time_taken_secant <- end_time_secant - start_time_secant
+
+# In kết quả
+cat("Thời gian thực thi Newton-Raphson:", time_taken_newton, "\n")
+cat("Thời gian thực thi Bisection:", time_taken_bisec, "\n")
+cat("Thời gian thực thi Secant:", time_taken_secant, "\n")
+
+```
+***So sánh các phương pháp:***
+
+- *Newton-Raphson:*
+
+Ưu điểm: Nhanh nếu đạo hàm đủ chính xác.
+
+
+Nhược điểm: Nhạy cảm với giá trị khởi đầu và đạo hàm bậc hai.
+
+- *Bisection:*
+
+Ưu điểm: Ổn định nhưng chậm.
+
+Nhược điểm: Yêu cầu tìm khoảng ban đầu $[a,b]$.
+
+- *Secant:*
+
+Ưu điểm: Không yêu cầu đạo hàm bậc hai.
+
+Nhược điểm: Kém ổn định hơn Newton-Raphson.
+
+- *Fixed-point:*
+
+Chậm hơn và kém ổn định trên các hàm phi tuyến tính.
